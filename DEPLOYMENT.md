@@ -28,11 +28,48 @@ Use the free plans for a temporary assessment demo. The web service sleeps after
 | `LOG_LEVEL`             | `info`                                                                                                                        |
 | `PORT`                  | Leave Render's default `10000`. The container honors an override.                                                             |
 
-Configure mail before inviting users to register. Use `MAIL_MAILER=smtp`, `MAIL_SCHEME=smtp`, the provider's `MAIL_HOST`, `MAIL_PORT=2525` with STARTTLS if supported, `MAIL_USERNAME`, `MAIL_PASSWORD`, a verified `MAIL_FROM_ADDRESS`, and `MAIL_FROM_NAME=PromptEdit`. Render Free blocks outbound SMTP on ports 25, 465, and 587. The image defaults to `MAIL_MAILER=array`, which delivers no email and keeps verification and reset links out of service logs. Verify email delivery and that signed links use the public HTTPS origin before sharing the demo.
+## Verification email delivery
 
-## Enable paid generations only after confirming spending limits
+Email verification stays enabled and is required to access Generations. The image defaults to `MAIL_MAILER=array`, which delivers no email. The built-in verification notification sends synchronously, so no queue worker is needed for this setup.
 
-Leave `PIXELFORGE_API_KEY` and `PIXELFORGE_WEBHOOK_SECRET` unset on the first deploy. The app blocks submissions and rejects unsigned or unconfigured webhook deliveries. After confirming an acceptable provider-side spending limit, add the credentials in Render's Environment settings and configure Pixelforge to send signed webhooks to `https://your-service.onrender.com/webhooks/pixelforge`. Every verified account can submit once the API key is set. Keep credentials in Render's runtime environment. Never commit them or add them to Docker build arguments.
+Recommended: Resend Free via Laravel's existing SMTP transport (no additional package). The free tier provides 3,000 emails/month with a 100/day limit. You need a domain you control; the app can keep its `onrender.com` URL, but that shared domain cannot be verified as your sender domain. Add a sending domain/subdomain in Resend, publish its required SPF/DKIM records in your DNS, and follow its DMARC guidance. Wait for verification, then create a sending API key.
+
+Set these values in Render's runtime Environment settings, replacing the sender and secret:
+
+```dotenv
+APP_URL=https://promptedit-assessment.onrender.com
+MAIL_MAILER=smtp
+MAIL_SCHEME=smtp
+MAIL_HOST=smtp.resend.com
+MAIL_PORT=2587
+MAIL_USERNAME=resend
+MAIL_PASSWORD=<Resend API key>
+MAIL_FROM_ADDRESS=verify@<your verified sending domain>
+MAIL_FROM_NAME=PromptEdit
+```
+
+Use STARTTLS on port 2587; Symfony's SMTP transport automatically upgrades when the server advertises STARTTLS. Remove any stale `MAIL_URL` override. Do not set `MAIL_SCHEME=tls` (the transport schemes are `smtp` and `smtps`). Render Free blocks outbound ports 25, 465, and 587. Save/apply these environment values when ready to restart/deploy. Keep the existing stable `APP_KEY`.
+
+Register with an inbox you control, confirm receipt (including spam), follow the signed HTTPS verification link, and confirm access to `/generations`. Also check resend and password-reset delivery. Resend's testing sender is not a substitute for verifying a domain to send to reviewers. A free email service does not include buying a custom domain if you do not already own one.
+
+[Resend pricing](https://resend.com/pricing) · [Resend SMTP](https://resend.com/docs/send-with-smtp) · [Domain verification](https://resend.com/docs/dashboard/domains/introduction)
+
+## Configure Pixelforge and reviewer history
+
+Pixelforge is simulated: no real model runs and no real money is charged. Its usage and pricing still need to be calculated correctly for the assessment.
+
+1. In the Pixelforge dashboard, create/select a key for this deployment. Each key has its own webhook URL and signing secret.
+2. Set that key's webhook URL to `https://promptedit-assessment.onrender.com/webhooks/pixelforge`.
+3. In Render's runtime Environment settings, set `PIXELFORGE_API_KEY` to that key and `PIXELFORGE_WEBHOOK_SECRET` to its matching signing secret. Leave `PIXELFORGE_BASE_URL` unset to use `https://pixelforge.promptedit.dev`. The image blocks submissions without a key and rejects webhook deliveries without a valid matching secret.
+4. Once the configuration is applied, send a test event from Pixelforge and confirm HTTP 204 in its delivery log.
+5. Create an account using a working inbox and complete email verification. Generate at least three `[succeed]` examples with different sizes/qualities. Add `[duplicate]` to one prompt and verify duplicate deliveries do not change the settled charge. Test `[fail]` separately and confirm a zero actual charge. Confirm history updates without a manual page reload and compare provider usage/rates with the displayed final charge including the 25% markup.
+6. History is private to each user. Provide reviewers a dedicated demo account through the assessment handoff, with those completed examples in that account's history, or explicitly arrange their own registration/verification. Never commit its password or any secrets. Verify the GitHub repository and deployed URL both open in a signed-out browser.
+
+### Image URL expiration
+
+The official Images documentation states that URLs expire 24 hours after generation completion. `GET /v1/generations/{id}` returns a fresh URL with the **same expiration time**; it does not extend access. There is no documented API to extend that deadline. The current UI shows “Image link expired” after expiry. Generate examples within 24 hours of review. Durable image history would require downloading completed images before expiry and keeping them in external persistent storage; Render Free's local filesystem cannot preserve them. No refresh or storage change is implemented here.
+
+[Pixelforge API reference](https://pixelforge.promptedit.dev/docs#images)
 
 ## Startup and free-tier limits
 
@@ -42,6 +79,6 @@ The image serves `public/` with three FrankenPHP request threads. Node and Compo
 
 The runtime image removes the base FrankenPHP binary's `cap_net_bind_service` file capability before switching to `www-data`. Render's restricted capability set can otherwise reject execution with `Operation not permitted` (exit 126), even though the binary is executable. Port `10000` does not require this capability. Keep the startup script's `exec "$@"` so FrankenPHP receives container signals directly.
 
-Cold starts can delay webhook acknowledgments. Verify delivery and manual recovery before enabling paid usage. Free PostgreSQL has no managed backups. Export any data you need before expiry.
+Cold starts can delay webhook acknowledgments. Verify delivery and manual recovery before reviewer handoff. Free PostgreSQL has no managed backups. Export any data you need before expiry.
 
 [Render free-tier limits](https://render.com/docs/free) · [Render Docker deployments](https://render.com/docs/docker) · [Render PostgreSQL connections](https://render.com/docs/postgresql-creating-connecting)
