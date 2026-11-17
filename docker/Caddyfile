@@ -1,0 +1,17 @@
+{
+	admin off
+	persist_config off
+	frankenphp {
+		num_threads 3
+		max_threads 3
+	}
+}
+
+http://:{$PORT:10000} {
+	root * /app/public
+	encode gzip
+	php_server {
+		# Render terminates TLS before forwarding requests to Caddy.
+		env HTTPS {$HTTPS:on}
+	}
+}
