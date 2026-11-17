@@ -28,7 +28,13 @@ class GenerationResource extends JsonResource
                 : (string) $this->actual_user_charge_nanodollars,
             'image_url' => $imageExpired ? null : $this->image_url,
             'image_expired' => $imageExpired,
-            'error_message' => $this->status === GenerationStatus::Failed ? $this->provider_error_message : null,
+            'error_message' => $this->status === GenerationStatus::Failed
+                ? match ($this->provider_error_code) {
+                    'content_policy_violation' => 'The prompt was rejected by Pixelforge.',
+                    'validation_failed' => 'Pixelforge rejected the generation request. Check your inputs and try again.',
+                    default => 'Pixelforge could not generate the image.',
+                }
+                : null,
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

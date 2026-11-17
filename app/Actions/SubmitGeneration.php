@@ -78,7 +78,6 @@ final class SubmitGeneration
     {
         $response = $error->response;
         $code = $response->json('error.code');
-        $message = $response->json('error.message');
 
         // These errors reject the unchanged payload. Transient errors can follow an
         // earlier attempt that reached Pixelforge, so keep those submissions pending.
@@ -88,7 +87,9 @@ final class SubmitGeneration
             $field = is_string($field) && preg_match('/\A(?:prompt|size|quality|reference_images(?:\.[0-3])?)\z/', $field)
                 ? $field
                 : ($code === 'content_policy_violation' ? 'prompt' : 'generation');
-            $message = is_string($message) && $message !== '' ? $message : 'Pixelforge rejected the generation request.';
+            $message = $code === 'content_policy_violation'
+                ? 'The prompt was rejected by Pixelforge.'
+                : 'Pixelforge rejected the generation request. Check your inputs and try again.';
 
             Generation::query()->whereKey($generation->id)->unsettled()->whereNull('provider_generation_id')->update([
                 'status' => GenerationStatus::Failed->value,

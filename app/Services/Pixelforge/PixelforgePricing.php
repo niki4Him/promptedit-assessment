@@ -38,7 +38,13 @@ final class PixelforgePricing
             throw new UnexpectedValueException('Expected Pixelforge pricing in USD per million tokens.');
         }
 
-        $tokens = $pricing['tokens'] ?? [];
+        $tokens = $pricing['tokens'] ?? null;
+        $rates = $pricing['rates'] ?? null;
+
+        if (! is_array($tokens) || ! is_array($rates)) {
+            throw new UnexpectedValueException('Expected Pixelforge token estimates and rates.');
+        }
+
         $charactersPerToken = $this->nonNegativeInteger($tokens['characters_per_text_token'] ?? null);
 
         if ($charactersPerToken === 0) {
@@ -48,7 +54,7 @@ final class PixelforgePricing
         $output = $tokens['output'][$quality][$size] ?? null;
         $reasoning = $tokens['reasoning'][$quality] ?? [];
 
-        if ($output === null || $reasoning === []) {
+        if ($output === null || ! is_array($reasoning) || $reasoning === []) {
             throw new InvalidArgumentException('Size and quality must be present in Pixelforge pricing.');
         }
 
@@ -65,7 +71,7 @@ final class PixelforgePricing
             'input_image_tokens' => $this->multiply($referenceImageCount, $this->nonNegativeInteger($tokens['per_reference_image'] ?? null)),
             'output_tokens' => $output,
             'reasoning_tokens' => $minReasoning + intdiv($maxReasoning - $minReasoning, 2),
-        ], $pricing['rates'] ?? []);
+        ], $rates);
     }
 
     /**

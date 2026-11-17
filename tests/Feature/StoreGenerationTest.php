@@ -138,8 +138,10 @@ test('applies provider defaults and accepts a prompt of exactly 4000 Unicode cha
         && $request['size'] === '1024x1024' && $request['quality'] === 'medium' && ! isset($request['reference_images']));
 });
 
-test('a pricing outage does not create a submission', function () {
-    Http::fake(['https://pixelforge.test/v1/pricing' => Http::response([], 500)]);
+test('unavailable or malformed pricing does not create a submission', function (int $status, array $pricingOverrides) {
+    Http::fake([
+        'https://pixelforge.test/v1/pricing' => Http::response(array_replace($this->pricing, $pricingOverrides), $status),
+    ]);
 
     $this->actingAs(User::factory()->create())->from(route('dashboard'))
         ->post(route('generations.store'), ['prompt' => 'Fox'])
@@ -147,15 +149,18 @@ test('a pricing outage does not create a submission', function () {
 
     $this->assertDatabaseCount('generations', 0);
     Http::assertSentCount(1);
-});
+})->with([
+    'provider outage' => [500, []],
+    'malformed rates' => [200, ['rates' => 'not a rates object']],
+]);
 
-test('shows provider validation errors and records confirmed rejections at zero cost', function (
+test('uses safe validation messages and records confirmed rejections at zero cost', function (
     int $status, string $code, ?string $param, string $errorKey, string $message,
 ) {
     Http::fake([
         'https://pixelforge.test/v1/pricing' => Http::response($this->pricing),
         'https://pixelforge.test/v1/generations' => Http::response([
-            'error' => ['code' => $code, 'message' => $message, 'param' => $param],
+            'error' => ['code' => $code, 'message' => 'Sensitive provider response details.', 'param' => $param],
         ], $status),
     ]);
 
@@ -174,7 +179,7 @@ test('shows provider validation errors and records confirmed rejections at zero 
     Http::assertSentCount(2);
 })->with([
     'content policy' => [400, 'content_policy_violation', null, 'prompt', 'The prompt was rejected by Pixelforge.'],
-    'validation' => [422, 'validation_failed', 'size', 'size', 'The selected size is invalid.'],
+    'validation' => [422, 'validation_failed', 'size', 'size', 'Pixelforge rejected the generation request. Check your inputs and try again.'],
 ]);
 
 test('leaves throttled or overloaded submissions pending with a bounded retry policy', function (

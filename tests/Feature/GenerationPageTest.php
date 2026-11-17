@@ -51,7 +51,7 @@ test('history shows the signed-in user’s generations newest first and keeps mo
     $user = User::factory()->create();
     $old = $user->generations()->create(($this->generationAttributes)())->forceFill([
         'status' => GenerationStatus::Failed,
-        'provider_error_message' => 'The prompt was rejected.',
+        'provider_error_message' => 'Sensitive provider response details.',
         'actual_user_charge_nanodollars' => 0,
         'created_at' => now()->subDay(),
     ]);
@@ -83,7 +83,7 @@ test('history shows the signed-in user’s generations newest first and keeps mo
             ->missing('history.data.0.actual_provider_cost_nanodollars')
             ->where('history.data.1.id', (string) $old->id)
             ->where('history.data.1.actual_user_charge_nanodollars', '0')
-            ->where('history.data.1.error_message', 'The prompt was rejected.'));
+            ->where('history.data.1.error_message', 'Pixelforge could not generate the image.'));
 
     Http::assertNothingSent();
 });
@@ -179,12 +179,17 @@ test('invalid estimates return field errors without calling the provider', funct
     Http::assertNothingSent();
 });
 
-test('a preview pricing outage returns a clear unavailable response', function () {
-    Http::fake(['https://pixelforge.test/v1/pricing' => Http::response([], 500)]);
+test('unavailable or malformed preview pricing returns a clear unavailable response', function (int $status, array $pricingOverrides) {
+    Http::fake([
+        'https://pixelforge.test/v1/pricing' => Http::response(array_replace($this->pricing, $pricingOverrides), $status),
+    ]);
 
     $this->actingAs(User::factory()->create())->postJson(route('generations.estimate'), ['prompt' => 'Fox'])
         ->assertServiceUnavailable()
         ->assertJsonPath('message', 'Image pricing is temporarily unavailable.');
 
     Http::assertSentCount(1);
-});
+})->with([
+    'provider outage' => [500, []],
+    'malformed rates' => [200, ['rates' => 'not a rates object']],
+]);
