@@ -28,31 +28,27 @@ Use the free plans for a temporary assessment demo. The web service sleeps after
 | `LOG_LEVEL`             | `info`                                                                                                                        |
 | `PORT`                  | Leave Render's default `10000`. The container honors an override.                                                             |
 
-## Verification email delivery
+## Provision one verified reviewer account (no email service)
 
-Email verification stays enabled and is required to access Generations. The image defaults to `MAIL_MAILER=array`, which delivers no email. The built-in verification notification sends synchronously, so no queue worker is needed for this setup.
+Email verification remains required for normal registrations. For this assessment, use the opt-in `demo:provision` command to create one pre-verified reviewer account. It sends no email and adds no public provisioning endpoint. The password is hashed by the User model. Existing accounts are never verified, reset, or otherwise changed by this command.
 
-Recommended: Resend Free via Laravel's existing SMTP transport (no additional package). The free tier provides 3,000 emails/month with a 100/day limit. You need a domain you control; the app can keep its `onrender.com` URL, but that shared domain cannot be verified as your sender domain. Add a sending domain/subdomain in Resend, publish its required SPF/DKIM records in your DNS, and follow its DMARC guidance. Wait for verification, then create a sending API key.
-
-Set these values in Render's runtime Environment settings, replacing the sender and secret:
+Render Free has no interactive shell, so the startup script runs the command after migrations only when either of these runtime environment variables is nonempty:
 
 ```dotenv
-APP_URL=https://promptedit-assessment.onrender.com
-MAIL_MAILER=smtp
-MAIL_SCHEME=smtp
-MAIL_HOST=smtp.resend.com
-MAIL_PORT=2587
-MAIL_USERNAME=resend
-MAIL_PASSWORD=<Resend API key>
-MAIL_FROM_ADDRESS=verify@<your verified sending domain>
-MAIL_FROM_NAME=PromptEdit
+DEMO_ACCOUNT_EMAIL=<a new demo account email>
+DEMO_ACCOUNT_PASSWORD=<a unique strong password>
 ```
 
-Use STARTTLS on port 2587; Symfony's SMTP transport automatically upgrades when the server advertises STARTTLS. Remove any stale `MAIL_URL` override. Do not set `MAIL_SCHEME=tls` (the transport schemes are `smtp` and `smtps`). Render Free blocks outbound ports 25, 465, and 587. Save/apply these environment values when ready to restart/deploy. Keep the existing stable `APP_KEY`.
+Minimal provisioning steps:
 
-Register with an inbox you control, confirm receipt (including spam), follow the signed HTTPS verification link, and confirm access to `/generations`. Also check resend and password-reset delivery. Resend's testing sender is not a substitute for verifying a domain to send to reviewers. A free email service does not include buying a custom domain if you do not already own one.
+1. In the Render web service's **Environment** settings, add both variables. Use a new email address not already registered (it does not need a working inbox) and a unique 16–72 character ASCII password with upper/lowercase letters, a number, and a symbol. Do not put the values in source files, build arguments, the Docker command, or GitHub.
+2. Choose **Save, rebuild, and deploy** so the latest `main` and those runtime secrets are applied. Leave **Docker Command** and **Pre-Deploy Command** blank. After migrations, logs should show `Verified demo account created.` No credentials are printed.
+3. Log in at `/login` using those credentials and confirm `/generations` opens. Share the credentials privately with reviewers, alongside the deployment and public repository URLs.
+4. Remove both variables and apply the environment change with a redeploy. The hashed account and its verification timestamp remain in PostgreSQL. This removes the provisioning secret from the running service. Retain the password in your private password manager for reviewer handoff.
 
-[Resend pricing](https://resend.com/pricing) · [Resend SMTP](https://resend.com/docs/send-with-smtp) · [Domain verification](https://resend.com/docs/dashboard/domains/introduction)
+Repeated starts with the same credentials succeed without changing the account. Missing/invalid values or an existing account with a different password or unverified email cause provisioning to fail and stop startup; remove both variables to restore normal startup, or choose a new unused email and valid password. The command cannot be used to reset passwords. Locally or on a plan with a shell, it can also be invoked as `php artisan demo:provision --no-interaction` with both variables supplied securely in the environment.
+
+Keep `MAIL_MAILER=array` for this no-email demo. Ordinary users can still register but cannot complete verification or email-based password resets without a mail service; direct reviewers to the provisioned account instead. Do not disable verification globally. A future production rollout can configure a real mail transport separately.
 
 ## Configure Pixelforge and reviewer history
 
@@ -62,8 +58,8 @@ Pixelforge is simulated: no real model runs and no real money is charged. Its us
 2. Set that key's webhook URL to `https://promptedit-assessment.onrender.com/webhooks/pixelforge`.
 3. In Render's runtime Environment settings, set `PIXELFORGE_API_KEY` to that key and `PIXELFORGE_WEBHOOK_SECRET` to its matching signing secret. Leave `PIXELFORGE_BASE_URL` unset to use `https://pixelforge.promptedit.dev`. The image blocks submissions without a key and rejects webhook deliveries without a valid matching secret.
 4. Once the configuration is applied, send a test event from Pixelforge and confirm HTTP 204 in its delivery log.
-5. Create an account using a working inbox and complete email verification. Generate at least three `[succeed]` examples with different sizes/qualities. Add `[duplicate]` to one prompt and verify duplicate deliveries do not change the settled charge. Test `[fail]` separately and confirm a zero actual charge. Confirm history updates without a manual page reload and compare provider usage/rates with the displayed final charge including the 25% markup.
-6. History is private to each user. Provide reviewers a dedicated demo account through the assessment handoff, with those completed examples in that account's history, or explicitly arrange their own registration/verification. Never commit its password or any secrets. Verify the GitHub repository and deployed URL both open in a signed-out browser.
+5. Log in with the provisioned reviewer account. Generate at least three `[succeed]` examples with different sizes/qualities. Add `[duplicate]` to one prompt and verify duplicate deliveries do not change the settled charge. Test `[fail]` separately and confirm a zero actual charge. Confirm history updates without a manual page reload and compare provider usage/rates with the displayed final charge including the 25% markup.
+6. History is private to each user. Provide reviewers a dedicated demo account through the assessment handoff, with those completed examples in that account's history, using the provisioning steps above. Never commit its password or any secrets. Verify the GitHub repository and deployed URL both open in a signed-out browser.
 
 ### Image URL expiration
 
