@@ -40,6 +40,8 @@ Each container start runs `php artisan migrate --force --no-interaction` against
 
 The image serves `public/` with three FrankenPHP request threads. Node and Composer are build-time only. The database holds sessions and cache, including submission rate-limit counters. Render handles TLS. Caddy tells Laravel to generate HTTPS URLs. For local HTTP-only container testing, set `HTTPS=off` and `SESSION_SECURE_COOKIE=false`.
 
+The runtime image removes the base FrankenPHP binary's `cap_net_bind_service` file capability before switching to `www-data`. Render's restricted capability set can otherwise reject execution with `Operation not permitted` (exit 126), even though the binary is executable. Port `10000` does not require this capability. Keep the startup script's `exec "$@"` so FrankenPHP receives container signals directly.
+
 Cold starts can delay webhook acknowledgments. Verify delivery and manual recovery before enabling paid usage. Free PostgreSQL has no managed backups. Export any data you need before expiry.
 
 [Render free-tier limits](https://render.com/docs/free) · [Render Docker deployments](https://render.com/docs/docker) · [Render PostgreSQL connections](https://render.com/docs/postgresql-creating-connecting)

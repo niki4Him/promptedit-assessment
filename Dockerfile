@@ -48,7 +48,10 @@ COPY docker/Caddyfile /etc/frankenphp/Caddyfile
 COPY docker/production.ini /usr/local/etc/php/conf.d/99-promptedit.ini
 COPY --chmod=755 docker/start.sh /usr/local/bin/promptedit-start
 
-RUN mkdir -p storage/app/private storage/app/public storage/framework/cache/data \
+# The base binary has cap_net_bind_service=ep for privileged ports. Render's
+# restricted capability set rejects exec of that binary; our HTTP port is 10000.
+RUN setcap -r /usr/local/bin/frankenphp \
+    && mkdir -p storage/app/private storage/app/public storage/framework/cache/data \
         storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache /config/caddy /data/caddy
 USER www-data
