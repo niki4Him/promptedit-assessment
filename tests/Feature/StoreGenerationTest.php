@@ -57,6 +57,56 @@ test('guests cannot submit a generation', function () {
     Http::assertNothingSent();
 });
 
+test('unverified users must verify their email before using generation routes', function () {
+    Http::fake();
+
+    $this->actingAs(User::factory()->unverified()->create());
+
+    $this->get(route('generations.index'))->assertRedirect(route('verification.notice'));
+    $this->post(route('generations.store'), ['prompt' => 'Fox'])->assertRedirect(route('verification.notice'));
+    $this->postJson(route('generations.estimate'), ['prompt' => 'Fox'])->assertForbidden();
+    $this->post(route('generations.recover', ['generation' => 1]))->assertRedirect(route('verification.notice'));
+
+    $this->assertDatabaseCount('generations', 0);
+    Http::assertNothingSent();
+});
+
+test('verified users have independent submission limits and throttled requests never reach Pixelforge', function () {
+    $this->travelTo(now()->startOfSecond());
+    $sequence = Http::sequence();
+
+    foreach (range(1, 6) as $number) {
+        $sequence->push(array_replace($this->queued, ['id' => "gen_{$number}"]), 202);
+    }
+
+    Http::fake([
+        'https://pixelforge.test/v1/pricing' => Http::response($this->pricing),
+        'https://pixelforge.test/v1/generations' => $sequence,
+    ]);
+
+    $first = User::factory()->create();
+    $second = User::factory()->create();
+    $url = route('generations.store');
+
+    $this->actingAs($first);
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $this->post($url, ['prompt' => 'Fox'])->assertStatus(303)->assertSessionHasNoErrors();
+    }
+
+    $this->postJson($url, ['prompt' => 'Fox'])
+        ->assertTooManyRequests()
+        ->assertHeader('Retry-After', '60');
+
+    Http::assertSentCount(10);
+    $this->assertDatabaseCount('generations', 5);
+
+    $this->actingAs($second)->post($url, ['prompt' => 'Fox'])->assertStatus(303)->assertSessionHasNoErrors();
+
+    Http::assertSentCount(12);
+    expect($first->generations()->count())->toBe(5)
+        ->and($second->generations()->count())->toBe(1);
+});
+
 test('invalid forms are rejected before calling Pixelforge', function (array $fields, string $errorKey) {
     Http::fake();
 

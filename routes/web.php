@@ -11,10 +11,10 @@ Route::inertia('/', 'Welcome')->name('home');
 
 Route::post('webhooks/pixelforge', PixelforgeWebhookController::class)->name('webhooks.pixelforge');
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('generations', GenerationIndexController::class)->name('generations.index');
     Route::post('generations/estimate', EstimateGenerationController::class)->name('generations.estimate');
-    Route::post('generations', StoreGenerationController::class)->name('generations.store');
+    Route::post('generations', StoreGenerationController::class)->middleware('throttle:generation-submissions')->name('generations.store');
     Route::post('generations/{generation}/recover', RecoverGenerationController::class)->whereNumber('generation')->name('generations.recover');
 });
 

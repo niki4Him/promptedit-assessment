@@ -82,6 +82,18 @@ test('accepts a signed ping anonymously and deduplicates fresh deliveries', func
     $this->assertDatabaseHas('pixelforge_webhook_events', ['id' => 'evt_ping']);
 });
 
+test('signed webhook deliveries remain anonymous and outside the submission limit', function () {
+    Http::fake();
+
+    foreach (range(1, 6) as $number) {
+        ($this->signedRequest)(['id' => "evt_ping_{$number}", 'type' => 'ping'])->assertNoContent();
+    }
+
+    $this->assertGuest();
+    $this->assertDatabaseCount('pixelforge_webhook_events', 6);
+    Http::assertNothingSent();
+});
+
 test('rejects invalid signatures before decoding the event', function (Closure $alterHeader) {
     ($this->signedRequest)('{invalid JSON', alterHeader: $alterHeader)->assertNoContent(400);
 
